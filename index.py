@@ -1,66 +1,64 @@
 #!/usr/bin/python3
 from requests import get
-from get_ct import get_cts
-from json import dumps
+from bs4 import BeautifulSoup
 from time import sleep
 
-def get_url(buf):
-    url_start = buf.find("/")
-    url_end = buf.find("\" ")
-    return buf[url_start:url_end]
+def get_min_ct(cts):
+    cts = [float(x) for x in cts]
+    ct_index = 0
+    ct_v = cts[0]
+    for i in range(1, len(cts)):
+        if ct_v > cts[i]:
+            ct_index = i
+    return ct_index
 
-def get_eq(buf):
-    eq_start = buf.find("title=")
-    eq_end = buf[eq_start:].find("\">") + eq_start
-    spl_buf = buf[eq_start:eq_end].split(":") 
-    if len(spl_buf) < 2:
-        return ""
-    return spl_buf[1].strip()
+def wwin(score):
+    score = [int(x.strip()) for x in score.split("-")]
+    who_win = 0
+    if score[0] > score[1]:
+        who_win = 1
+    elif score[0] < score[1]:
+        who_win = 2
+    return who_win
 
-def get_score(buf):
-    scr_start = buf.find("lm3_score")
-    scr_start = buf[scr_start:].find(">") + scr_start + 1
-    scr_end = buf[scr_start:].find("<") + scr_start
-    return buf[scr_start:scr_end]
+html_doc = get("https://www.pronosoft.com/fr/parions_sport/resultats-parions-sport-plein-ecran.htm").content
+soup = BeautifulSoup(html_doc, 'html.parser')
+nb_win = 0
+nb_trade = 0
+wallet = 50
+risk = 1
+for tag in soup.find_all('tr'):
+    if tag.has_attr('class') and 'm-s-0' in tag['class']:
+        t = tag.a
+        r = tag.find("td", {"class": "res"}).contents
+        if len(t.contents) >= 2 and len(r) > 0:
+            score = r[0]
+            equipe = t.contents[1]
+            ct_tds = tag.find_all("td")
+            cts = [ct_tds[5].get_text(), ct_tds[6].get_text(), ct_tds[7].get_text()];
+            try:
+                cts = [float(x.replace(",", ".")) for x in cts]
+                min_ct = get_min_ct(cts)
+                if min_ct == 0 and cts[min_ct] >= 2:
+                    nb_trade += 1
+                    if wwin(score) == 1:
+                        print("\033[32m", equipe, cts[min_ct], "WIN!!\033[37m", score, risk)
+                        wallet = wallet + (risk * cts[min_ct]) - risk
+                        nb_win += 1
+                        risk = 1
+                    else:
+                        print("\033[31m", equipe, cts[min_ct], "LOSS!!\033[37m", score, risk)
+                        wallet = wallet - risk
+                        risk = risk * 2
+                    if risk > wallet:
+                        print("You've lost : {}$".format(round(wallet)))
+                        break
+                    print("Profit : {}$".format(round(wallet)))
+                    sleep(1)
+            except:
+                pass
 
-def get_data(date="04-09-2022"):
-    req = get("https://www.matchendirect.fr/resultat-foot-"+date).content.decode()
-    results = []
-    result_start = 0
-    count = 0
-    print("getting data...")
-    while result_start != -1:
-        result_start = req.find('<td class=\"lm3\">')
-        result_end = req[result_start:].find('</td>') + result_start + 5
-        r = req[result_start:result_end]
-        print(get_eq(r))
-        print(get_score(r))
-        print(get_url(r))
-        result = {
-            "eq": get_eq(r),
-            "score": get_score(r),
-            "cts": get_cts(get_url(r))
-        }
-        if len(result["cts"]) == 0:
-            break
-        print(result)
-        if result["eq"] != '' and result["score"] != '':
-            results.append(result)
-        req = req[result_end:]
-        count += 1
-        if count > 20:
-            break
-    f = open(date+".json", "w")
-    f.write(dumps(results))
-    f.close()
-
-i = 5
-while i < 15:
-    if i < 10:
-        d = "0" + str(i)
-    else:
-        d = str(i)
-    d = d + "-09-2022"
-    get_data(d)
-    sleep(1)
-    i += 1
+winRate = round((nb_win/nb_trade)*100)
+print("Taux de reussite : {}%".format(winRate))
+print("Nombre de trade : {}".format(nb_trade))
+print("Profit : {}$".format(round(wallet)))

@@ -19,13 +19,8 @@ def get_cts(url):
     while r.find("class=\"c2\"") != -1:
         ct = extract_ct(r)
         pos = r.find(ct)
-        print(r)
-        r = r[pos:]
+        r = r[pos+4:]
         cts.append(ct)
-        sleep(1)
     sleep(2)
     
     return cts
-
-get_cts("/live-score/chaves-rio-ave.html")
-
